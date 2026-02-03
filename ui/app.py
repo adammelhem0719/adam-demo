@@ -4,7 +4,7 @@ import streamlit as st
 st.set_page_config(page_title="ADAM Console", layout="wide")
 st.success("UPDATED UI/APP.PY LOADED")
 import pandas as pd
-from ui.board_view import render_board_view
+from board_view import render_board_view
 from adam_core.simulator import SystemState
 
 from adam_core.config import load_ontology

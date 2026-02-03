@@ -1,0 +1,8 @@
+{
+  "company": "Arcadian Cloud Systems",
+  "generated_at": "2026-01-07T17:16:41.976312+00:00",
+  "days": 180,
+  "seed": 7,
+  "suggested_incident_time": "2025-11-17T12:00:00+00:00",
+  "notes": "incident_flag is 1 when sla_breach_rate >= 0.02; suggested_incident_time is first crossing."
+}

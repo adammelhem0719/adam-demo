@@ -1,0 +1,18 @@
+version: "3.9"
+services:
+  adam-api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ..:/app
+  adam-ui:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.ui
+    ports:
+      - "8501:8501"
+    volumes:
+      - ..:/app

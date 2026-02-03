@@ -1,10 +1,12 @@
+from __future__ import annotations
+import streamlit as st
+
+
 import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 
-from __future__ import annotations
-import streamlit as st
 
 st.set_page_config(page_title="ADAM Console", layout="wide")
 st.success("UPDATED UI/APP.PY LOADED")

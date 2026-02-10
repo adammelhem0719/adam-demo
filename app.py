@@ -1,75 +1,51 @@
-from __future__ import annotations
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 import streamlit as st
 import pandas as pd
+import os
 
 from adam_core.config import load_ontology
-from adam_core.simulator import forecast
-from adam_core.eri import compute_eri
-from adam_core.replay import backtest_replay
 
 st.set_page_config(page_title="ADAM Console", layout="wide")
-st.title("ADAM Console — Escalation Forecasting (Synthetic Demo)")
 
-ont = load_ontology("config/ontology.yaml")
+# Shared state init
+if "ont" not in st.session_state:
+    st.session_state.ont = load_ontology("config/ontology.yaml")
 
-st.sidebar.header("Inputs")
-uploaded = st.sidebar.file_uploader("Upload a CSV dataset", type=["csv"])
-horizon = st.sidebar.slider("Forecast horizon (days)", min_value=7, max_value=60, value=ont.forecast_horizon_days, step=1)
+st.sidebar.title("ADAM Console")
+st.sidebar.caption("Enterprise Risk Intelligence")
+
+# Data load (upload or demo)
+uploaded = st.sidebar.file_uploader("Upload Company CSV", type=["csv"])
 
 if uploaded is None:
-    st.info("Upload `data/arcadian_cloud_systems_timeseries.csv` from this repo to see the demo.")
-    st.stop()
+    demo_path = os.path.join("data", "arcadian_cloud_systems_timeseries.csv")
+    df = pd.read_csv(demo_path)
+else:
+    df = pd.read_csv(uploaded)
 
-df = pd.read_csv(uploaded)
-df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
-df = df.sort_values("timestamp")
+if "timestamp" in df.columns:
+    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True, errors="coerce")
+    df = df.dropna(subset=["timestamp"]).sort_values("timestamp")
 
-st.subheader("Dataset Preview")
-st.dataframe(df.tail(10), use_container_width=True)
+st.session_state.data = df
 
-colA, colB = st.columns([1, 1])
+horizon = st.sidebar.slider("Forecast horizon (days)", 7, 60, int(st.session_state.ont.forecast_horizon_days), 1)
+st.session_state.horizon_days = int(horizon)
 
-with colA:
-    st.subheader("Control Metrics (Last 60 days)")
-    recent = df[df["timestamp"] >= df["timestamp"].max() - pd.Timedelta(days=60)]
-    st.line_chart(recent.set_index("timestamp")[["vendor_latency_ms", "ops_queue_depth", "override_rate_per_hr", "review_throughput_per_hr", "sla_breach_rate"]])
+st.sidebar.success("Data loaded.")
+st.sidebar.caption(f"Rows: {len(df):,}")
 
-with colB:
-    st.subheader("Run Forecast")
-    fr = forecast(df, ont, start_time=None, horizon_days=int(horizon))
-    probs = fr.series[0].probabilities if fr.series else {}
-    ttf = fr.summary.get("time_to_failure_days")
-    eri = compute_eri(probs, ont.impact_weights, ttf)
+risk_vitals = st.Page("ui/pages/1_Risk_Vitals.py", title="Risk Vitals", icon="🛡️")
+financial_churn = st.Page("ui/pages/2_Financial_Churn.py", title="Financial Churn", icon="💸")
+ai_agents = st.Page("ui/pages/3_AI_Agents.py", title="AI Agents", icon="🤖")
 
-    st.metric("Escalation Risk Index (ERI)", f"{eri.eri:.3f}")
-    st.write("**Top driver:**", eri.top_driver)
-    st.write("**Top choke point:**", fr.summary.get("top_choke_point"))
-    st.write("**Predicted first SLA degrade/fail:**", fr.summary.get("predicted_first_sla_degrade_or_fail"))
+# Order matters: first item becomes the default view on launch
+nav = st.navigation([risk_vitals, financial_churn, ai_agents], position="sidebar")
+nav.run()
 
-    states_df = pd.DataFrame([{"timestamp": p.timestamp, **p.predicted_states} for p in fr.series]).set_index("timestamp")
-    st.line_chart(states_df.applymap(lambda s: {"healthy":0, "constrained":1, "degraded":2, "failed":3}[s]))
-
-st.divider()
-st.subheader("Historical Replay (Backtest)")
-
-incident_default = df["timestamp"].max().floor("D")
-incident_time = st.text_input("Incident time (ISO8601)", value=str(incident_default.isoformat()))
-
-lookback = st.slider("Lookback window (days)", min_value=7, max_value=120, value=30, step=1)
-h2 = st.slider("Replay forecast horizon (days)", min_value=7, max_value=60, value=14, step=1)
-
-try:
-    rr = backtest_replay(df, ont, incident_time=incident_time, lookback_days=int(lookback), horizon_days=int(h2))
-    st.write(rr.narrative)
-    if rr.first_warning_time:
-        st.success(f"First ERI warning at {rr.first_warning_time}  — lead time: {rr.lead_time_days:.2f} days")
-    else:
-        st.warning("No warning threshold crossed in the replay window.")
-
-    eri_df = pd.DataFrame(rr.eri_series)
-    eri_df["as_of"] = pd.to_datetime(eri_df["as_of"], utc=True)
-    eri_df = eri_df.sort_values("as_of").set_index("as_of")
-    st.line_chart(eri_df[["eri"]])
-    st.dataframe(eri_df.tail(25), use_container_width=True)
-except Exception as e:
-    st.error(str(e))
